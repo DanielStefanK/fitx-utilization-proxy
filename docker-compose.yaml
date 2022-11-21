@@ -1,0 +1,10 @@
+version: '3'
+services:
+  fitx-proxy:
+    build: .
+    environment:
+      - MEIN_FITX_SESSION_COOKIE=mySessionCookie
+      - FITX_FACILITY_GROUP=myFacilityGroup
+    restart: always
+    ports:
+      - 8080:8080
