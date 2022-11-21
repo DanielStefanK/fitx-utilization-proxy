@@ -41,7 +41,7 @@ func (s *Store) Get(studioId uint64) *responses.UtilizationResponse {
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("https://mein.fitx.de/nox/v1/studios/%d/utilization", magicLineId), nil)
 
 		if err != nil {
-			log.Fatal(err)
+			log.Print(err)
 		}
 
 		req.Header.Set("x-tenant", "fitx")
@@ -51,19 +51,21 @@ func (s *Store) Get(studioId uint64) *responses.UtilizationResponse {
 		res, err := httpClient.Do(req)
 
 		if err != nil {
-			log.Fatal(err)
+			log.Print(err)
 			return nil
 		}
 
 		body, err := ioutil.ReadAll(res.Body)
 		if err != nil {
-			log.Fatal(err)
+			log.Print(err)
+			return nil
 		}
 
 		utilization := responses.UtilizationResponse{}
 		err = json.Unmarshal(body, &utilization)
 		if err != nil {
-			log.Fatal(err)
+			log.Print(string(body))
+			log.Print(err)
 			return nil
 		}
 
@@ -83,7 +85,7 @@ func (s *Store) UpdateStudios() *responses.StudioResponse {
 	req, err := http.NewRequest(http.MethodGet, "https://mein.fitx.de/sponsorship/v1/public/studios/forwhitelabelportal", nil)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
 	}
 
 	req.Header.Set("x-tenant", "fitx")
@@ -93,25 +95,25 @@ func (s *Store) UpdateStudios() *responses.StudioResponse {
 	res, err := httpClient.Do(req)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
 		return nil
 	}
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
 		return nil
 	}
 
 	if res.StatusCode != 200 {
-		log.Fatal(string(body))
+		log.Print(string(body))
 		return nil
 	}
 
 	studioResponse := responses.StudioResponse{}
 	err = json.Unmarshal(body, &studioResponse)
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
 		return nil
 	}
 
