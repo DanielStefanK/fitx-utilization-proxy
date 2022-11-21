@@ -35,7 +35,7 @@ var httpClient = http.Client{
 // Get: get a utilization for a studio
 func (s *Store) Get(studioId uint64) *responses.UtilizationResponse {
 
-	if s.cache.Get(studioId).Value() == nil {
+	if s.cache.Get(studioId) == nil {
 		magicLineId := s.findMagicLineIdByStudioId(studioId)
 
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("https://mein.fitx.de/nox/v1/studios/%d/utilization", magicLineId), nil)
