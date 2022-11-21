@@ -14,17 +14,17 @@ import (
 )
 
 type Store struct {
-	cache           ttlcache.Cache[uint64, *responses.UtilizationResponse]
+	cache           *ttlcache.Cache[uint64, *responses.UtilizationResponse]
 	studioListCache []responses.StudioInfo
 }
 
 func NewStore() Store {
-	cache := ttlcache.New[uint64, *responses.UtilizationResponse](
+	cache := ttlcache.New(
 		ttlcache.WithTTL[uint64, *responses.UtilizationResponse](15 * time.Minute),
 	)
 
 	return Store{
-		cache: *cache,
+		cache: cache,
 	}
 }
 
