@@ -25,10 +25,14 @@ func NewStore() Store {
 		ttlcache.WithTTL[uint64, *responses.UtilizationResponse](15 * time.Minute),
 	)
 
-	return Store{
+	store := Store{
 		cache:  cache,
 		logger: logger,
 	}
+
+	store.UpdateStudios()
+
+	return store
 }
 
 var httpClient = http.Client{
