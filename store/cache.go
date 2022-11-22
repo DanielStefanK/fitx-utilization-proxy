@@ -29,7 +29,7 @@ func NewStore() Store {
 }
 
 var httpClient = http.Client{
-	Timeout: time.Second * 2, // Timeout after 2 seconds
+	Timeout: time.Second * 5, // Timeout after 2 seconds
 }
 
 // Get: get a utilization for a studio
@@ -38,14 +38,13 @@ func (s *Store) Get(studioId uint64) *responses.UtilizationResponse {
 	if s.cache.Get(studioId) == nil {
 		magicLineId := s.findMagicLineIdByStudioId(studioId)
 
-		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("https://mein.fitx.de/nox/v1/studios/%d/utilization", magicLineId), nil)
+		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("https://mein.fitx.de/nox/public/v1/studios/%d/utilization", magicLineId), nil)
 
 		if err != nil {
 			log.Print(err)
 		}
 
 		req.Header.Set("x-tenant", "fitx")
-		req.Header.Set("cookie", fmt.Sprintf("SESSION=%s;", os.Getenv("MEIN_FITX_SESSION_COOKIE")))
 		req.Header.Set("x-public-facility-group", os.Getenv("FITX_FACILITY_GROUP"))
 
 		res, err := httpClient.Do(req)
@@ -86,10 +85,10 @@ func (s *Store) UpdateStudios() *responses.StudioResponse {
 
 	if err != nil {
 		log.Print(err)
+		return nil
 	}
 
 	req.Header.Set("x-tenant", "fitx")
-	req.Header.Set("cookie", fmt.Sprintf("SESSION=%s;", os.Getenv("MEIN_FITX_SESSION_COOKIE")))
 	req.Header.Set("x-public-facility-group", os.Getenv("FITX_FACILITY_GROUP"))
 
 	res, err := httpClient.Do(req)
