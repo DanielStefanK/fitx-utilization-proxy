@@ -4,27 +4,30 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/DanielStefanK/fitx-utilization-proxy/responses"
 	"github.com/jellydator/ttlcache/v3"
+	"go.uber.org/zap"
 )
 
 type Store struct {
 	cache           *ttlcache.Cache[uint64, *responses.UtilizationResponse]
 	studioListCache []responses.StudioInfo
+	logger          *zap.Logger
 }
 
 func NewStore() Store {
+	logger, _ := zap.NewProduction()
 	cache := ttlcache.New(
 		ttlcache.WithTTL[uint64, *responses.UtilizationResponse](15 * time.Minute),
 	)
 
 	return Store{
-		cache: cache,
+		cache:  cache,
+		logger: logger,
 	}
 }
 
@@ -36,12 +39,15 @@ var httpClient = http.Client{
 func (s *Store) Get(studioId uint64) *responses.UtilizationResponse {
 
 	if s.cache.Get(studioId) == nil {
+
+		s.logger.Info("utilization not found or expired. retrieving.. ", zap.Uint64("studioId", studioId))
 		magicLineId := s.findMagicLineIdByStudioId(studioId)
 
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("https://mein.fitx.de/nox/public/v1/studios/%d/utilization", magicLineId), nil)
 
 		if err != nil {
-			log.Print(err)
+			s.logger.Error(err.Error())
+			return nil
 		}
 
 		req.Header.Set("x-tenant", "fitx")
@@ -50,21 +56,25 @@ func (s *Store) Get(studioId uint64) *responses.UtilizationResponse {
 		res, err := httpClient.Do(req)
 
 		if err != nil {
-			log.Print(err)
+			s.logger.Error(err.Error())
 			return nil
 		}
 
 		body, err := ioutil.ReadAll(res.Body)
 		if err != nil {
-			log.Print(err)
+			s.logger.Error(err.Error())
+			return nil
+		}
+
+		if res.StatusCode > 399 {
+			s.logger.Error("fitx api served an error code", zap.Int("code", res.StatusCode), zap.String("body", string(body)))
 			return nil
 		}
 
 		utilization := responses.UtilizationResponse{}
 		err = json.Unmarshal(body, &utilization)
 		if err != nil {
-			log.Print(string(body))
-			log.Print(err)
+			s.logger.Error(err.Error())
 			return nil
 		}
 
@@ -81,10 +91,11 @@ func (s *Store) Get(studioId uint64) *responses.UtilizationResponse {
 }
 
 func (s *Store) UpdateStudios() *responses.StudioResponse {
+	s.logger.Info("Updating studio infos")
 	req, err := http.NewRequest(http.MethodGet, "https://mein.fitx.de/sponsorship/v1/public/studios/forwhitelabelportal", nil)
 
 	if err != nil {
-		log.Print(err)
+		s.logger.Error(err.Error())
 		return nil
 	}
 
@@ -94,25 +105,26 @@ func (s *Store) UpdateStudios() *responses.StudioResponse {
 	res, err := httpClient.Do(req)
 
 	if err != nil {
-		log.Print(err)
+		s.logger.Error(err.Error())
 		return nil
 	}
 
 	body, err := ioutil.ReadAll(res.Body)
+
 	if err != nil {
-		log.Print(err)
+		s.logger.Error(err.Error())
 		return nil
 	}
 
-	if res.StatusCode != 200 {
-		log.Print(string(body))
+	if res.StatusCode > 399 {
+		s.logger.Error("fitx api served an error code", zap.Int("code", res.StatusCode), zap.String("body", string(body)))
 		return nil
 	}
 
 	studioResponse := responses.StudioResponse{}
 	err = json.Unmarshal(body, &studioResponse)
 	if err != nil {
-		log.Print(err)
+		s.logger.Error(err.Error())
 		return nil
 	}
 
@@ -123,7 +135,11 @@ func (s *Store) UpdateStudios() *responses.StudioResponse {
 
 func (s *Store) GetStudios() *responses.StudioResponse {
 	if s.studioListCache == nil || len(s.studioListCache) == 0 {
-		s.UpdateStudios()
+		studios := s.UpdateStudios()
+
+		if studios == nil {
+			return nil
+		}
 	}
 
 	return &responses.StudioResponse{
@@ -138,6 +154,10 @@ func (s *Store) findMagicLineIdByStudioId(studioId uint64) uint64 {
 		}
 	}
 
+	s.logger.Warn("Could not find magiclinId by studioId",
+		zap.Uint64("studioId", studioId),
+	)
+
 	return 0
 }
 
@@ -147,6 +167,10 @@ func (s *Store) findUuidByStudioId(studioId uint64) string {
 			return current.UUID
 		}
 	}
+
+	s.logger.Warn("Could not find uuid by studioId",
+		zap.Uint64("studioId", studioId),
+	)
 
 	return ""
 }
@@ -158,6 +182,10 @@ func (s *Store) findNameByStudioId(studioId uint64) string {
 		}
 	}
 
+	s.logger.Warn("Could not find studio name by studioId",
+		zap.Uint64("studioId", studioId),
+	)
+
 	return ""
 }
 
@@ -168,5 +196,16 @@ func (s *Store) getCurrentWorkload(dataPoints []responses.DataPoint) uint8 {
 		}
 	}
 
+	s.logger.Error("could not find current workload")
 	return 0
+}
+
+func (s *Store) StudioExists(studioId uint64) bool {
+	for _, current := range s.studioListCache {
+		if current.ID == studioId {
+			return true
+		}
+	}
+
+	return false
 }
