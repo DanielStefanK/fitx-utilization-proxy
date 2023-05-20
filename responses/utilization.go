@@ -7,6 +7,7 @@ type UtilizationResponse struct {
 	UUID      string      `json:"uuid"`
 	Workload  uint8       `json:"workload"`
 	Name      string      `json:"name"`
+	Distance  float64     `json:"distance"`
 }
 
 type DataPoint struct {

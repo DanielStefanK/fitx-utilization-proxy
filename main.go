@@ -66,6 +66,35 @@ func main() {
 		c.PureJSON(200, resp)
 	})
 
+	router.GET("/api/utilization-by-lat-lon", func(c *gin.Context) {
+		lat, err := strconv.ParseFloat(c.Query("lat"), 64)
+
+		if err != nil {
+			c.PureJSON(404, &responses.ErrorResponse{Message: "could not parse latitude"})
+			return
+		}
+
+		long, err := strconv.ParseFloat(c.Query("lon"), 64)
+
+		if err != nil {
+			c.PureJSON(404, &responses.ErrorResponse{Message: "could not parse longitude"})
+			return
+		}
+
+		logger.Info("get studios by lat and long", zap.Float64("lat", lat), zap.Float64("long", long), zap.String("operation", "getStudioByLocation"))
+
+		resp := store.GetClosest(lat, long)
+
+		if resp == nil {
+			c.PureJSON(404, responses.ErrorResponse{
+				Message: "Could not get utilization for provided studio id",
+			})
+			return
+		}
+
+		c.PureJSON(200, resp)
+	})
+
 	router.GET("/api/studios", func(c *gin.Context) {
 
 		resp := store.GetStudios()

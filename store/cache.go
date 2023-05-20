@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/DanielStefanK/fitx-utilization-proxy/helper"
 	"github.com/DanielStefanK/fitx-utilization-proxy/responses"
 	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"
@@ -36,7 +38,7 @@ func NewStore() Store {
 }
 
 var httpClient = http.Client{
-	Timeout: time.Second * 5, // Timeout after 2 seconds
+	Timeout: time.Second * 20, // Timeout after 2 seconds
 }
 
 // Get: get a utilization for a studio
@@ -47,51 +49,39 @@ func (s *Store) Get(studioId uint64) *responses.UtilizationResponse {
 		s.logger.Info("utilization not found or expired. retrieving.. ", zap.Uint64("studioId", studioId))
 		magicLineId := s.findMagicLineIdByStudioId(studioId)
 
-		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("https://mein.fitx.de/nox/public/v1/studios/%d/utilization", magicLineId), nil)
-
-		if err != nil {
-			s.logger.Error(err.Error())
-			return nil
-		}
-
-		req.Header.Set("x-tenant", "fitx")
-		req.Header.Set("x-public-facility-group", os.Getenv("FITX_FACILITY_GROUP"))
-
-		res, err := httpClient.Do(req)
-
-		if err != nil {
-			s.logger.Error(err.Error())
-			return nil
-		}
-
-		body, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			s.logger.Error(err.Error())
-			return nil
-		}
-
-		if res.StatusCode > 399 {
-			s.logger.Error("fitx api served an error code", zap.Int("code", res.StatusCode), zap.String("body", string(body)))
-			return nil
-		}
-
-		utilization := responses.UtilizationResponse{}
-		err = json.Unmarshal(body, &utilization)
-		if err != nil {
-			s.logger.Error(err.Error())
-			return nil
-		}
+		utilization := s.getByMagicLineId(magicLineId)
 
 		utilization.UUID = s.findUuidByStudioId(studioId)
-		utilization.Workload = s.getCurrentWorkload(utilization.Items)
 		utilization.Name = s.findNameByStudioId(studioId)
 
-		s.cache.Set(studioId, &utilization, ttlcache.DefaultTTL)
+		s.cache.Set(studioId, utilization, ttlcache.DefaultTTL)
 
-		return &utilization
+		return utilization
 	} else {
 		return s.cache.Get(studioId).Value()
 	}
+}
+
+// GetClosest: get a utilization for the studio closest to the lat and long points
+func (s *Store) GetClosest(lat, long float64) *responses.UtilizationResponse {
+	currentMin := math.MaxFloat64
+	currentClosest := s.studioListCache[len(s.studioListCache)-1]
+
+	for _, i := range s.GetStudios().Content {
+		if i.Name == "Verwaltung" {
+			continue
+		}
+		currentDistance := helper.CalculateDistance(lat, long, i.Address.Lat, i.Address.Long)
+		if currentDistance < currentMin {
+			currentMin = currentDistance
+			currentClosest = i
+		}
+	}
+
+	utilization := s.Get(currentClosest.ID)
+	utilization.Distance = currentMin
+
+	return utilization
 }
 
 func (s *Store) UpdateStudios() *responses.StudioResponse {
@@ -212,4 +202,46 @@ func (s *Store) StudioExists(studioId uint64) bool {
 	}
 
 	return false
+}
+
+func (s *Store) getByMagicLineId(magicLineId uint64) *responses.UtilizationResponse {
+
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("https://mein.fitx.de/nox/public/v1/studios/%d/utilization", magicLineId), nil)
+
+	if err != nil {
+		s.logger.Error(err.Error())
+		return nil
+	}
+
+	req.Header.Set("x-tenant", "fitx")
+	req.Header.Set("x-public-facility-group", os.Getenv("FITX_FACILITY_GROUP"))
+
+	res, err := httpClient.Do(req)
+
+	if err != nil {
+		s.logger.Error(err.Error())
+		return nil
+	}
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		s.logger.Error(err.Error())
+		return nil
+	}
+
+	if res.StatusCode > 399 {
+		s.logger.Error("fitx api served an error code", zap.Int("code", res.StatusCode), zap.String("body", string(body)))
+		return nil
+	}
+
+	utilization := responses.UtilizationResponse{}
+	err = json.Unmarshal(body, &utilization)
+	if err != nil {
+		s.logger.Error(err.Error())
+		return nil
+	}
+
+	utilization.Workload = s.getCurrentWorkload(utilization.Items)
+
+	return &utilization
 }
